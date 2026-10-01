@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: chatapp-mongodb
-  namespace: chatapp
+  namespace: chat-app
   labels:
     app: chatapp
     feature: database

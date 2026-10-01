@@ -1,6 +1,6 @@
 kind: Namespace
 apiVersion: v1
 metadata:
-  name: chatapp
+  name: chat-app
   labels:
     app: chatapp

@@ -2,7 +2,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: chatapp-frontend
-  namespace: chatapp
+  namespace: chat-app
   labels:
     app: chatapp
     feature: frontend

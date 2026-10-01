@@ -177,6 +177,13 @@ docker-compose logs -f
 
 You can now interact with the real-time chat app and start messaging!
 
+### If you face issues while uploading images in the chat then you have to add below environment values of cloudinary in .env file.
+```
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+```
+
 ---
 
 

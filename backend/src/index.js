@@ -23,7 +23,7 @@ app.use(cookieParser());
 app.use(
   cors({
     origin: process.env.NODE_ENV === "production" 
-      ? ["http://localhost:8080", "http://localhost"] 
+      ? ["http://localhost:8080", "http://localhost", "http://localhost:8000"] 
       : "http://localhost:5173",
     credentials: true,
   })

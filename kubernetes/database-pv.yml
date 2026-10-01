@@ -2,12 +2,12 @@ kind: PersistentVolume
 apiVersion: v1
 metadata:
   name: mongodb-data
-  namespace: chatapp
 spec:
   capacity:
-    storage: 1Gi
+    storage: 5Gi
   accessModes:
     - ReadWriteOnce
+  storageClassName: "manual"
   persistentVolumeReclaimPolicy: Retain
   hostPath:
     path: /data/db

@@ -1,0 +1,27 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: chatapp-frontend
+  namespace: chatapp
+  labels:
+    app: chatapp
+    feature: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      feature: frontend
+  template:
+    metadata:
+      labels:
+        app: chatapp
+        feature: frontend
+    spec:
+      containers:
+      - name: chatapp-frontend
+        image: saadzahid/fullstack-chatapp-frontend:v1
+        ports:
+        - containerPort: 80
+        env:
+        - name: NODE_ENV
+          value: "development"

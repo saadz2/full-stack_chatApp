@@ -1,0 +1,29 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: chatapp-backend
+  namespace: chatapp
+  labels:
+    app: chatapp
+    feature: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      feature: backend
+  template:
+    metadata:
+      labels:
+        app: chatapp
+        feature: backend
+    spec:
+      containers:
+      - name: chatapp-backend
+        image: saadzahid/fullstack-chatapp-backend:v1
+        ports:
+        - containerPort: 5001
+        env:
+        - name: JWT_SECRET
+          value: "ursUS2R529ul9DwOnmgykEDBaaPfRi7JXKO0aAjfxW8="
+        - name: MONGODB_URI
+          value: "mongodb://root:admin@mongo:27017/chatApp?authSource=admin&retryWrites=true&w=majority"

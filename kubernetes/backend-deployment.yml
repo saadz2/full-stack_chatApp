@@ -39,16 +39,16 @@ spec:
         - name: MONGODB_URI
           value: "mongodb://root:admin@mongo:27017/chatApp?authSource=admin&retryWrites=true&w=majority"
 
-  readinessProbe:
-    httpGet:
-      path: /health
-      port: 5001
-    initialDelaySeconds: 15
-    periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5001
+          initialDelaySeconds: 15
+          periodSeconds: 10
 
-  livenessProbe:
-    httpGet:
-      path: /health
-      port: 5001
-    initialDelaySeconds: 30
-    periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5001
+          initialDelaySeconds: 30
+          periodSeconds: 10

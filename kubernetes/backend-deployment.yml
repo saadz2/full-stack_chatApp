@@ -17,6 +17,17 @@ spec:
         app: chatapp
         feature: backend
     spec:
+      initContainers:
+      - name: wait-for-mongo
+        image: busybox:1.36
+        command:
+          - sh
+          - -c
+          - |
+            until nc -z mongo 27017; do
+              echo "Waiting for MongoDB..."
+              sleep 2
+            done
       containers:
       - name: chatapp-backend
         image: saadzahid/fullstack-chatapp-backend:v1
@@ -27,3 +38,17 @@ spec:
           value: "ursUS2R529ul9DwOnmgykEDBaaPfRi7JXKO0aAjfxW8="
         - name: MONGODB_URI
           value: "mongodb://root:admin@mongo:27017/chatApp?authSource=admin&retryWrites=true&w=majority"
+
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 5001
+        initialDelaySeconds: 15
+        periodSeconds: 10
+
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 5001
+        initialDelaySeconds: 30
+        periodSeconds: 10

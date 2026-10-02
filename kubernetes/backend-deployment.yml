@@ -34,6 +34,8 @@ spec:
         ports:
         - containerPort: 5001
         env:
+        - name: PORT
+          value: "5001"
         - name: JWT_SECRET
           value: "ursUS2R529ul9DwOnmgykEDBaaPfRi7JXKO0aAjfxW8="
         - name: MONGODB_URI

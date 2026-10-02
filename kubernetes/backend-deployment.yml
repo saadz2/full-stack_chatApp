@@ -30,7 +30,7 @@ spec:
             done
       containers:
       - name: chatapp-backend
-        image: saadzahid/fullstack-chatapp-backend:v1
+        image: saadzahid/fullstack-chatapp-backend:v2
         ports:
         - containerPort: 5001
         env:

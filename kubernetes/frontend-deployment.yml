@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: chatapp-frontend
-        image: saadzahid/fullstack-chatapp-frontend:v1
+        image: saadzahid/fullstack-chatapp-frontend:v2
         ports:
         - containerPort: 80
         env:

@@ -14,11 +14,7 @@ spec:
         path: "/"
         backend:
           service:
-            name: backend
-            port: 
-              number: 5001
-        frontend:
-          service:
             name: frontend
-            port:
+            port: 
               number: 8000
+        

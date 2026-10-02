@@ -3,9 +3,6 @@ apiVersion: v1
 metadata:
   name: backend
   namespace: chat-app
-  labels:
-    app: chatapp
-    feature: backend
 spec:
   selector:
     feature: backend

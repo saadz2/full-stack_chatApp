@@ -4,7 +4,6 @@ metadata:
   name: chatapp-backend
   namespace: chat-app
   labels:
-    app: chatapp
     feature: backend
 spec:
   replicas: 2
@@ -14,7 +13,6 @@ spec:
   template:
     metadata:
       labels:
-        app: chatapp
         feature: backend
     spec:
       initContainers:

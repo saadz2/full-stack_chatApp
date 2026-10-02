@@ -3,15 +3,17 @@ kind: Deployment
 metadata:
   name: chatapp-mongodb
   namespace: chat-app
+  labels:
+    feature: database
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: chatapp-mongodb
+      feature: database
   template:
     metadata:
       labels:
-        app: chatapp-mongodb
+        feature: database
     spec:
       containers:
       - name: mongodb

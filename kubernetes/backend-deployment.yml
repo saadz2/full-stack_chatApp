@@ -44,10 +44,7 @@ spec:
               name: chatapp-secret
               key: JWT_SECRET
         - name: MONGODB_URI
-          valueFrom:
-            secretKeyRef:
-              name: chatapp-secret
-              key: MONGODB_URI
+          value: mongodb://root:nvBWAlnJJEr}NC){@mongo:27017/chatApp?authSource=admin&retryWrites=true&w=majority
         resources:
           limits:
             memory: "512Mi"

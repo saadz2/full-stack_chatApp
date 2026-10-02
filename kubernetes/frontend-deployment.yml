@@ -46,8 +46,8 @@ spec:
             cpu: "100m"
         volumeMounts:
         - name: nginx-conf
-          mountPath: /etc/nginx/conf.d/
-          subPath: default.conf
+          mountPath: /etc/nginx/
+          subPath: nginx.conf
       volumes:
       - name: nginx-conf
         configMap:

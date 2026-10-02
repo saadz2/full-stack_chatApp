@@ -20,6 +20,7 @@ spec:
       containers:
       - name: chatapp-frontend
         image: saadzahid/fullstack-chatapp-frontend:v2
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
         env:
@@ -27,3 +28,18 @@ spec:
           value: "development"
         - name: BACKEND_URL
           value: "http://backend:5001"
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+        volumeMounts:
+        - name: nginx-conf
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
+      volumes:
+      - name: nginx-conf
+        configMap:
+          name: nginx-config

@@ -20,6 +20,7 @@ spec:
       initContainers:
       - name: wait-for-mongo
         image: busybox:1.36
+        imagePullPolicy: IfNotPresent
         command:
           - sh
           - -c
@@ -31,26 +32,22 @@ spec:
       containers:
       - name: chatapp-backend
         image: saadzahid/fullstack-chatapp-backend:v2
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 5001
         env:
+        - name: NODE_ENV
+          value: "development"
         - name: PORT
           value: "5001"
         - name: JWT_SECRET
           value: "ursUS2R529ul9DwOnmgykEDBaaPfRi7JXKO0aAjfxW8="
         - name: MONGODB_URI
           value: "mongodb://root:admin@mongo:27017/chatApp?authSource=admin&retryWrites=true&w=majority"
-
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 5001
-          initialDelaySeconds: 15
-          periodSeconds: 10
-
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 5001
-          initialDelaySeconds: 30
-          periodSeconds: 10
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "256Mi"
+            cpu: "250m"

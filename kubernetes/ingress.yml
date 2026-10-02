@@ -3,6 +3,9 @@ kind: Ingress
 metadata:
   name: chatapp-ingress
   namespace: chat-app
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
   labels:
     feature: ingress
 spec:

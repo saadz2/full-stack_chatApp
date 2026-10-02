@@ -33,7 +33,7 @@ spec:
           value: "root"
         - name: MONGO_INITDB_ROOT_PASSWORD
           value: "admin"
-  volumes:
-  - name: mongodb-data
-    persistentVolumeClaim:
-      claimName: mongodb-data
+      volumes:
+      - name: mongodb-data
+        persistentVolumeClaim:
+          claimName: mongodb-data

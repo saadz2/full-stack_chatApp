@@ -1,0 +1,17 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: chatapp-frontend
+  namespace: chat-app
+  labels:
+    app: chatapp
+    feature: frontend
+spec:
+  selector:
+    feature: frontend
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 80
+      nodePort: 30002
+  type: NodePort

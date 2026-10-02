@@ -1,7 +1,7 @@
 kind: Service
 apiVersion: v1
 metadata:
-  name: chatapp-backend
+  name: backend
   namespace: chat-app
   labels:
     app: chatapp

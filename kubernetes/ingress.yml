@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: chatapp-ingress
+  namespace: chat-app
+  labels:
+    feature: ingress
+spec:
+  rules:
+  - host: chatapp.local
+    http:
+      paths:
+      - pathType: Prefix
+        path: "/"
+        backend:
+          service:
+            name: backend
+            port: 
+              number: 5001
+        frontend:
+          service:
+            name: frontend
+            port:
+              number: 8000

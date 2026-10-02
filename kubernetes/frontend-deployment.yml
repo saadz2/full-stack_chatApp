@@ -22,7 +22,7 @@ spec:
           - sh
           - -c
           - |
-            until nc -z chatapp-backend 5001; do
+            until nc -z backend 5001; do
               echo "Waiting for backend..."
               sleep 2
             done

@@ -15,6 +15,17 @@ spec:
       labels:
         feature: frontend
     spec:
+      initContainers:
+      - name: wait-for-backend
+        image: busybox:1.36
+        command:
+          - sh
+          - -c
+          - |
+            until nc -z chatapp-backend 5001; do
+              echo "Waiting for backend..."
+              sleep 2
+            done
       containers:
       - name: chatapp-frontend
         image: saadzahid/fullstack-chatapp-frontend:v2

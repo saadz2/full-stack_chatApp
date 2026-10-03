@@ -86,7 +86,7 @@ jobs:
             infra:
               - 'kubernetes/namespace.yml'
               - 'kubernetes/ingress.yml'
-              - '.github/workflows/deploy-production.yml'
+              - '.github/workflows/prod-deploy.yml'
 
       - name: Resolve components to deploy
         id: components
@@ -253,7 +253,8 @@ jobs:
       needs.prepare.outputs.deploy == 'true' &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-latest
+    # Runner lives on the MicroK8s EC2 host, so the private API endpoint is reachable.
+    runs-on: [self-hosted, linux, microk8s-prod]
     environment:
       name: production
     env:
@@ -268,12 +269,11 @@ jobs:
       - uses: azure/setup-kubectl@v4
 
       - name: Configure kubeconfig
-        env:
-          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
         run: |
-          mkdir -p ~/.kube
-          echo "$KUBE_CONFIG" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
+          export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
+          microk8s config > "$KUBECONFIG"
+          chmod 600 "$KUBECONFIG"
+          echo "KUBECONFIG=$KUBECONFIG" >> "$GITHUB_ENV"
           kubectl version
           kubectl cluster-info
 
@@ -358,6 +358,10 @@ jobs:
           [ "$DEPLOY_BACKEND" = "true" ]  && rollback chatapp-backend
           [ "$DEPLOY_DATABASE" = "true" ] && rollback chatapp-mongodb
           exit 1
+
+      - name: Clean up kubeconfig
+        if: always()
+        run: rm -f "$RUNNER_TEMP/kubeconfig"
 
   release:
     name: Tag & publish release

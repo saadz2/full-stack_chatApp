@@ -253,8 +253,8 @@ jobs:
       needs.prepare.outputs.deploy == 'true' &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
-    # Runner lives on the MicroK8s EC2 host, so the private API endpoint is reachable.
-    runs-on: [self-hosted, linux, microk8s-prod]
+    # Self-hosted runner inside the VPC, so the cluster's private API endpoint is reachable.
+    runs-on: [self-hosted, linux, x64]
     environment:
       name: production
     env:
@@ -269,9 +269,18 @@ jobs:
       - uses: azure/setup-kubectl@v4
 
       - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
         run: |
           export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
-          microk8s config > "$KUBECONFIG"
+          if command -v microk8s >/dev/null 2>&1; then
+            microk8s config > "$KUBECONFIG"
+          elif [ -n "$KUBE_CONFIG" ]; then
+            echo "$KUBE_CONFIG" | base64 -d > "$KUBECONFIG"
+          else
+            echo "::error::microk8s not found on runner and KUBE_CONFIG secret is not set."
+            exit 1
+          fi
           chmod 600 "$KUBECONFIG"
           echo "KUBECONFIG=$KUBECONFIG" >> "$GITHUB_ENV"
           kubectl version

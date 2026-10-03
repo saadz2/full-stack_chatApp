@@ -1,0 +1,384 @@
+name: Deploy to Production (K8s)
+
+on:
+  push:
+    branches: [production]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - "docker-compose.yml"
+  workflow_dispatch:
+    inputs:
+      component:
+        description: "What do you want to deploy?"
+        type: choice
+        required: true
+        default: complete
+        options:
+          - complete
+          - backend
+          - frontend
+          - database
+      version_bump:
+        description: "Semver bump for the new release tag (ignored if 'version' is set)"
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      version:
+        description: "Explicit release tag, e.g. v1.0.0 (optional)"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+# Never run two prod deployments at once, and never cancel one mid-rollout.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  NAMESPACE: chat-app
+  K8S_DIR: kubernetes
+  BACKEND_IMAGE: saadzahid/fullstack-chatapp-backend
+  FRONTEND_IMAGE: saadzahid/fullstack-chatapp-frontend
+
+jobs:
+  prepare:
+    name: Plan release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      backend: ${{ steps.components.outputs.backend }}
+      frontend: ${{ steps.components.outputs.frontend }}
+      database: ${{ steps.components.outputs.database }}
+      infra: ${{ steps.components.outputs.infra }}
+      deploy: ${{ steps.components.outputs.deploy }}
+    steps:
+      - name: Ensure production branch
+        if: github.ref != 'refs/heads/production'
+        run: |
+          echo "::error::Production deployments are only allowed from the 'production' branch."
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed components
+        id: filter
+        if: github.event_name == 'push'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'kubernetes/backend-*.yml'
+            frontend:
+              - 'frontend/**'
+              - 'kubernetes/frontend-*.yml'
+            database:
+              - 'kubernetes/database-*.yml'
+            infra:
+              - 'kubernetes/namespace.yml'
+              - 'kubernetes/ingress.yml'
+              - '.github/workflows/deploy-production.yml'
+
+      - name: Resolve components to deploy
+        id: components
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_COMPONENT: ${{ inputs.component }}
+          CH_BACKEND: ${{ steps.filter.outputs.backend }}
+          CH_FRONTEND: ${{ steps.filter.outputs.frontend }}
+          CH_DATABASE: ${{ steps.filter.outputs.database }}
+          CH_INFRA: ${{ steps.filter.outputs.infra }}
+        run: |
+          backend=false; frontend=false; database=false; infra=false
+          complete() { backend=true; frontend=true; database=true; infra=true; }
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            case "$INPUT_COMPONENT" in
+              complete) complete ;;
+              backend)  backend=true ;;
+              frontend) frontend=true ;;
+              database) database=true ;;
+            esac
+          else
+            [ "$CH_BACKEND" = "true" ]  && backend=true
+            [ "$CH_FRONTEND" = "true" ] && frontend=true
+            [ "$CH_DATABASE" = "true" ] && database=true
+            [ "$CH_INFRA" = "true" ]    && complete
+          fi
+
+          # First ever release: bootstrap the whole stack.
+          if [ -z "$(git tag -l 'v*.*.*')" ]; then
+            echo "No previous release found - performing complete deployment."
+            complete
+          fi
+
+          deploy=false
+          if $backend || $frontend || $database || $infra; then deploy=true; fi
+
+          {
+            echo "backend=$backend"
+            echo "frontend=$frontend"
+            echo "database=$database"
+            echo "infra=$infra"
+            echo "deploy=$deploy"
+          } | tee -a "$GITHUB_OUTPUT"
+
+      - name: Compute release version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_BUMP: ${{ inputs.version_bump }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          latest=$(git tag -l 'v*.*.*' --sort=-v:refname | head -n1)
+          echo "Latest release: ${latest:-<none>}"
+
+          if [ -n "$INPUT_VERSION" ]; then
+            if [[ ! "$INPUT_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Version must match vMAJOR.MINOR.PATCH (e.g. v1.0.0)"
+              exit 1
+            fi
+            next="$INPUT_VERSION"
+          elif [ -z "$latest" ]; then
+            next="v1.0.0"
+          else
+            bump="${INPUT_BUMP:-patch}"
+            # On merges, allow "#major" / "#minor" in the commit message to drive the bump.
+            if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+              case "$COMMIT_MSG" in
+                *"#major"*) bump=major ;;
+                *"#minor"*) bump=minor ;;
+              esac
+            fi
+            IFS=. read -r major minor patch <<< "${latest#v}"
+            case "$bump" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              *)     patch=$((patch + 1)) ;;
+            esac
+            next="v${major}.${minor}.${patch}"
+          fi
+
+          if git rev-parse -q --verify "refs/tags/$next" >/dev/null; then
+            echo "::error::Tag $next already exists."
+            exit 1
+          fi
+
+          echo "Next release: $next"
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Summary
+        run: |
+          {
+            echo "### Release plan: \`${{ steps.version.outputs.version }}\`"
+            echo "| Component | Deploy |"
+            echo "|---|---|"
+            echo "| Infra (namespace/PV/PVC/ingress) | ${{ steps.components.outputs.infra }} |"
+            echo "| Database | ${{ steps.components.outputs.database }} |"
+            echo "| Backend | ${{ steps.components.outputs.backend }} |"
+            echo "| Frontend | ${{ steps.components.outputs.frontend }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-backend:
+    name: Build & push backend
+    needs: prepare
+    if: needs.prepare.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ needs.prepare.outputs.version }}
+            ${{ env.BACKEND_IMAGE }}:sha-${{ github.sha }}
+            ${{ env.BACKEND_IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+  build-frontend:
+    name: Build & push frontend
+    needs: prepare
+    if: needs.prepare.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:${{ needs.prepare.outputs.version }}
+            ${{ env.FRONTEND_IMAGE }}:sha-${{ github.sha }}
+            ${{ env.FRONTEND_IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+  deploy:
+    name: Deploy to production cluster
+    needs: [prepare, build-backend, build-frontend]
+    if: |
+      always() &&
+      needs.prepare.result == 'success' &&
+      needs.prepare.outputs.deploy == 'true' &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      DEPLOY_BACKEND: ${{ needs.prepare.outputs.backend }}
+      DEPLOY_FRONTEND: ${{ needs.prepare.outputs.frontend }}
+      DEPLOY_DATABASE: ${{ needs.prepare.outputs.database }}
+      DEPLOY_INFRA: ${{ needs.prepare.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          mkdir -p ~/.kube
+          echo "$KUBE_CONFIG" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl version
+          kubectl cluster-info
+
+      - name: 1. Namespace
+        run: kubectl apply -f "$K8S_DIR/namespace.yml"
+
+      - name: 2. Persistent Volume
+        if: env.DEPLOY_INFRA == 'true'
+        run: kubectl apply -f "$K8S_DIR/database-pv.yml"
+
+      - name: 3. Persistent Volume Claim
+        if: env.DEPLOY_INFRA == 'true'
+        run: |
+          kubectl apply -f "$K8S_DIR/database-pvc.yml"
+          kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/mongodb-data -n "$NAMESPACE" --timeout=120s
+
+      - name: Secrets & ConfigMaps
+        env:
+          MONGO_ROOT_USERNAME: ${{ secrets.MONGO_ROOT_USERNAME }}
+          MONGO_ROOT_PASSWORD: ${{ secrets.MONGO_ROOT_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: |
+          kubectl create secret generic chatapp-secret -n "$NAMESPACE" \
+            --from-literal=MONGO_INITDB_ROOT_USERNAME="$MONGO_ROOT_USERNAME" \
+            --from-literal=MONGO_INITDB_ROOT_PASSWORD="$MONGO_ROOT_PASSWORD" \
+            --from-literal=JWT_SECRET="$JWT_SECRET" \
+            --from-literal=MONGODB_URI="$MONGODB_URI" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create configmap nginx-config -n "$NAMESPACE" \
+            --from-file=nginx.conf=frontend/nginx.conf \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: 4. MongoDB
+        if: env.DEPLOY_DATABASE == 'true'
+        run: |
+          kubectl apply -f "$K8S_DIR/database-service.yml"
+          kubectl apply -f "$K8S_DIR/database-deployment.yml"
+          kubectl annotate deployment/chatapp-mongodb -n "$NAMESPACE" \
+            kubernetes.io/change-cause="Release $VERSION" --overwrite
+          kubectl rollout status deployment/chatapp-mongodb -n "$NAMESPACE" --timeout=300s
+
+      - name: 5. Backend
+        if: env.DEPLOY_BACKEND == 'true'
+        run: |
+          kubectl apply -f "$K8S_DIR/backend-service.yml"
+          sed -E "s|image: .*/fullstack-chatapp-backend:.*|image: ${BACKEND_IMAGE}:${VERSION}|" \
+            "$K8S_DIR/backend-deployment.yml" | kubectl apply -f -
+          kubectl annotate deployment/chatapp-backend -n "$NAMESPACE" \
+            kubernetes.io/change-cause="Release $VERSION" --overwrite
+          kubectl rollout status deployment/chatapp-backend -n "$NAMESPACE" --timeout=300s
+
+      - name: 6. Frontend
+        if: env.DEPLOY_FRONTEND == 'true'
+        run: |
+          kubectl apply -f "$K8S_DIR/frontend-service.yml"
+          sed -E "s|image: .*/fullstack-chatapp-frontend:.*|image: ${FRONTEND_IMAGE}:${VERSION}|" \
+            "$K8S_DIR/frontend-deployment.yml" | kubectl apply -f -
+          kubectl annotate deployment/chatapp-frontend -n "$NAMESPACE" \
+            kubernetes.io/change-cause="Release $VERSION" --overwrite
+          kubectl rollout status deployment/chatapp-frontend -n "$NAMESPACE" --timeout=300s
+
+      - name: 7. Ingress
+        if: env.DEPLOY_INFRA == 'true'
+        run: kubectl apply -f "$K8S_DIR/ingress.yml"
+
+      - name: Verify
+        run: kubectl get pv,pvc,deploy,pods,svc,ingress -n "$NAMESPACE" -o wide
+
+      - name: Roll back on failure
+        if: failure()
+        run: |
+          rollback() {
+            if kubectl get deployment/"$1" -n "$NAMESPACE" >/dev/null 2>&1; then
+              echo "Rolling back $1"
+              kubectl rollout undo deployment/"$1" -n "$NAMESPACE" || true
+              kubectl rollout status deployment/"$1" -n "$NAMESPACE" --timeout=180s || true
+            fi
+          }
+          [ "$DEPLOY_FRONTEND" = "true" ] && rollback chatapp-frontend
+          [ "$DEPLOY_BACKEND" = "true" ]  && rollback chatapp-backend
+          [ "$DEPLOY_DATABASE" = "true" ] && rollback chatapp-mongodb
+          exit 1
+
+  release:
+    name: Tag & publish release
+    needs: [prepare, deploy]
+    if: always() && needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: Release ${{ needs.prepare.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          body: |
+            Deployed to production by @${{ github.actor }} via `${{ github.event_name }}`.
+
+            | Component | Deployed |
+            |---|---|
+            | Infra | ${{ needs.prepare.outputs.infra }} |
+            | Database | ${{ needs.prepare.outputs.database }} |
+            | Backend | ${{ needs.prepare.outputs.backend }} |
+            | Frontend | ${{ needs.prepare.outputs.frontend }} |
